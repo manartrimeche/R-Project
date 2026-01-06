@@ -1,0 +1,437 @@
+---
+title: "Analyse de l'effet du changement climatique"
+subtitle: "Étude descriptive et exploratoire"
+author: "Manar Trimeche"
+
+format:
+  html:
+    toc: true
+    toc-location: left
+    number-sections: true
+    theme: cosmo
+    code-fold: show
+    code-tools: true
+
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## 1. Introduction
+
+Le changement climatique est un enjeu majeur de santé publique.\
+Ce mini-projet a pour objectif d'étudier l'effet d'événements climatiques (vagues de chaleur, inondations, vagues de froid, contamination de l'eau, etc.) sur la santé d'une population urbaine et rurale à partir du jeu de données **Effect_Climate_Change.csv**.
+
+Plus précisément, l'analyse vise à : - Décrire les caractéristiques socio-démographiques, climatiques et sanitaires de la population. - Explorer les liens entre événements climatiques et présence de maladies. - Estimer des modèles simples pour identifier les principaux facteurs associés à la maladie.
+
+------------------------------------------------------------------------
+
+## 2. Préparation de l'environnement
+
+```{r}
+#| label: setup-packages
+#| code-fold: true
+
+# Installation des packages nécessaires (seulement si manquants)
+packages_needed <- c("tidyverse", "ggplot2", "dplyr", "corrplot", "psych", "car")
+new_packages <- packages_needed[!(packages_needed %in% installed.packages()[, "Package"])]
+
+if (length(new_packages) > 0) {
+    install.packages(new_packages)
+}
+
+# Chargement des librairies
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(corrplot)
+library(psych)
+library(car)
+```
+
+------------------------------------------------------------------------
+
+## 3. Chargement et exploration des données
+
+```{r}
+#| label: load-data
+
+# Charger le dataset
+data <- read.csv("Effect_Climate_Change.csv",
+    header = TRUE,
+    stringsAsFactors = TRUE
+)
+
+# Aperçu des données
+head(data)
+dim(data) # Nombre de lignes et de colonnes
+str(data) # Structure des variables
+summary(data) # Statistiques descriptives globales
+
+# Vérifier les valeurs manquantes
+colSums(is.na(data))
+```
+
+**Commentaire :**\
+Le jeu de données contient 800 observations et 31 variables, avec des informations démographiques (âge, sexe, région), économiques (revenu mensuel), de santé (BMI, maladies) et climatiques (vagues de chaleur, inondations, contamination de l'eau, etc.).
+
+------------------------------------------------------------------------
+
+## 4. Nettoyage des données
+
+```{r}
+#| label: clean-data
+
+# Supprimer la colonne SNO (numéro de série)
+data_clean <- data %>% select(-SNO)
+
+# Renommer les colonnes pour faciliter l'utilisation
+names(data_clean) <- make.names(names(data_clean))
+
+# Liste des variables catégorielles à transformer en facteurs
+categorical_vars <- c(
+    "REGION.", "SEX", "MARITAL.STATUS", "EDUCATION",
+    "OCCUPATION", "BMI.CATEGORY", "DISEASE", "DISEASE.TYPE",
+    "FLOODS", "CONTAMINATION.OF.WATER", "COLD.WAVES",
+    "WINTER.STORMS", "CITY"
+)
+
+# Conversion en facteurs
+for (var in categorical_vars) {
+    if (var %in% names(data_clean)) {
+        data_clean[[var]] <- as.factor(data_clean[[var]])
+    }
+}
+
+str(data_clean)
+```
+
+**Remarque :**\
+La fonction `make.names()` permet d'obtenir des noms de variables compatibles avec R (par exemple `REGION` devient `REGION.`, `FLOODS descrete` devient `FLOODS.descrete`, etc.).
+
+------------------------------------------------------------------------
+
+## 5. Statistiques descriptives
+
+### 5.1 Variables numériques
+
+```{r}
+#| label: descriptive-numeric
+
+# Variables numériques d'intérêt
+numeric_vars <- c(
+    "AGE", "WEIGHT", "HEIGHT", "BMI",
+    "HEAT.WAVES", "DEGREE.OF.DISEASE"
+)
+
+# Tableau de statistiques descriptives
+desc_stats <- describe(data_clean[, numeric_vars])
+desc_stats
+```
+
+### 5.2 Variables catégorielles
+
+```{r}
+#| label: descriptive-categorical
+
+cat("\n=== Distribution par REGION ===\n")
+table(data_clean$REGION.)
+
+cat("\n=== Distribution par SEXE ===\n")
+table(data_clean$SEX)
+
+cat("\n=== Présence de MALADIES ===\n")
+table(data_clean$DISEASE)
+
+cat("\n=== Exposition aux INONDATIONS ===\n")
+table(data_clean$FLOODS)
+
+cat("\n=== Répartition par VILLE ===\n")
+table(data_clean$CITY)
+```
+
+**Interprétation (à adapter) :**\
+On peut commenter ici l'âge moyen, le BMI moyen, la proportion de malades, la proportion de personnes exposées aux inondations, etc.
+
+------------------------------------------------------------------------
+
+## 6. Analyses de corrélation
+
+### 6.1 Matrice de corrélation
+
+```{r}
+#| label: correlation-matrix
+#| fig-width: 7
+#| fig-height: 5
+
+# Sélectionner les variables numériques pour la corrélation
+numeric_data <- data_clean %>%
+    select(
+        AGE, WEIGHT, HEIGHT, BMI, HEAT.WAVES, DEGREE.OF.DISEASE,
+        FLOODS.descrete, DISEASE.descrete2,
+        CONTAMINATION.OF.WATER.descrete
+    )
+
+# Calculer la matrice de corrélation
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+cor_matrix
+```
+
+```{r}
+#| label: correlation-plot
+#| fig-width: 7
+#| fig-height: 5
+
+# Visualisation de la matrice de corrélation
+corrplot(cor_matrix,
+    method = "color",
+    type = "upper",
+    tl.col = "black",
+    tl.srt = 45,
+    title = "Matrice de Corrélation - Variables Climatiques et Santé"
+)
+```
+
+### 6.2 Corrélation vagues de chaleur – degré de maladie
+
+```{r}
+#| label: correlation-heat-disease
+
+cor.test(
+    data_clean$HEAT.WAVES,
+    data_clean$DEGREE.OF.DISEASE
+)
+```
+
+------------------------------------------------------------------------
+
+## 7. Visualisations
+
+### 7.1 Distribution de l'âge par région
+
+```{r}
+#| label: plot-age-region
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot(data_clean, aes(x = REGION., y = AGE, fill = REGION.)) +
+    geom_boxplot() +
+    labs(
+        title = "Distribution de l'Âge par Région",
+        x = "Région",
+        y = "Âge"
+    ) +
+    theme_minimal()
+```
+
+### 7.2 BMI et maladies
+
+```{r}
+#| label: plot-bmi-disease
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot(data_clean, aes(x = BMI.CATEGORY, fill = DISEASE)) +
+    geom_bar(position = "fill") +
+    labs(
+        title = "Proportion de Maladies selon la Catégorie de BMI",
+        x = "Catégorie de BMI",
+        y = "Proportion"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### 7.3 Vagues de chaleur par ville
+
+```{r}
+#| label: plot-heat-city
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot(data_clean, aes(x = CITY, y = HEAT.WAVES, fill = CITY)) +
+    geom_violin() +
+    geom_boxplot(width = 0.1, fill = "white", alpha = 0.5) +
+    labs(
+        title = "Distribution des Vagues de Chaleur par Ville",
+        x = "Ville",
+        y = "Intensité des Vagues de Chaleur"
+    ) +
+    theme_minimal()
+```
+
+### 7.4 Contamination de l'eau et maladies
+
+```{r}
+#| label: plot-water-disease
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot(data_clean, aes(x = CONTAMINATION.OF.WATER, fill = DISEASE)) +
+    geom_bar(position = "dodge") +
+    labs(
+        title = "Contamination de l'Eau et Présence de Maladies",
+        x = "Contamination de l'Eau",
+        y = "Nombre de Cas"
+    ) +
+    theme_minimal()
+```
+
+### 7.5 Vagues de chaleur, BMI et maladies
+
+```{r}
+#| label: plot-heat-bmi-disease
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot(data_clean, aes(x = HEAT.WAVES, y = BMI, color = DISEASE)) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm", se = TRUE) +
+    labs(
+        title = "Relation entre Vagues de Chaleur, BMI et Maladies",
+        x = "Intensité des Vagues de Chaleur",
+        y = "Indice de Masse Corporelle (BMI)"
+    ) +
+    theme_minimal()
+```
+
+------------------------------------------------------------------------
+
+## 8. Tests statistiques
+
+### 8.1 Chi-carré : Inondations vs maladies
+
+```{r}
+#| label: chi-floods-disease
+
+table_floods_disease <- table(data_clean$FLOODS, data_clean$DISEASE)
+table_floods_disease
+
+chi_test_1 <- chisq.test(table_floods_disease)
+chi_test_1
+```
+
+### 8.2 Chi-carré : Contamination de l'eau vs maladies
+
+```{r}
+#| label: chi-water-disease
+
+table_water_disease <- table(
+    data_clean$CONTAMINATION.OF.WATER,
+    data_clean$DISEASE
+)
+table_water_disease
+
+chi_test_2 <- chisq.test(table_water_disease)
+chi_test_2
+```
+
+### 8.3 Test t : BMI selon exposition aux inondations
+
+```{r}
+#| label: ttest-bmi-floods
+
+t_test_floods <- t.test(BMI ~ FLOODS, data = data_clean)
+t_test_floods
+```
+
+### 8.4 ANOVA : Ville et vagues de chaleur
+
+```{r}
+#| label: anova-heat-city
+
+anova_city <- aov(HEAT.WAVES ~ CITY, data = data_clean)
+summary(anova_city)
+
+tukey_test <- TukeyHSD(anova_city)
+tukey_test
+```
+
+### 8.5 ANOVA : Catégorie de BMI et degré de maladie
+
+```{r}
+#| label: anova-bmi-degree
+
+data_disease_only <- data_clean %>%
+    filter(DISEASE == "Yes")
+
+anova_bmi <- aov(DEGREE.OF.DISEASE ~ BMI.CATEGORY,
+    data = data_disease_only
+)
+summary(anova_bmi)
+```
+
+------------------------------------------------------------------------
+
+## 9. Modèles de régression
+
+### 9.1 Régression linéaire simple
+
+```{r}
+#| label: lm-simple
+
+model_1 <- lm(DEGREE.OF.DISEASE ~ HEAT.WAVES,
+    data = data_disease_only
+)
+summary(model_1)
+```
+
+```{r}
+#| label: lm-simple-plot
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot(
+    data_disease_only,
+    aes(x = HEAT.WAVES, y = DEGREE.OF.DISEASE)
+) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "lm", color = "red", se = TRUE) +
+    labs(
+        title = "Régression : Vagues de Chaleur et Degré de Maladie",
+        x = "Intensité des Vagues de Chaleur",
+        y = "Degré de Maladie"
+    ) +
+    theme_minimal()
+```
+
+### 9.2 Régression linéaire multiple
+
+```{r}
+#| label: lm-multiple
+
+model_2 <- lm(DEGREE.OF.DISEASE ~ HEAT.WAVES + BMI + AGE,
+    data = data_disease_only
+)
+summary(model_2)
+
+# Diagnostics du modèle
+par(mfrow = c(2, 2))
+plot(model_2)
+
+# Multicolinéarité
+vif(model_2)
+```
+
+### 9.3 Régression logistique
+
+```{r}
+#| label: logistic-reg
+
+# Variable binaire pour la maladie
+data_clean$DISEASE_binary <- ifelse(data_clean$DISEASE == "Yes", 1, 0)
+
+model_logistic <- glm(
+    DISEASE_binary ~ HEAT.WAVES + BMI + AGE +
+        FLOODS.descrete + CONTAMINATION.OF.WATER.descrete,
+    data = data_clean,
+    family = binomial
+)
+summary(model_logistic)
+
+# Odds ratios
+exp(coef(model_logistic))
+```
+
+------------------------------------------------------------------------
