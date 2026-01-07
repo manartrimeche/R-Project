@@ -215,7 +215,11 @@ cor.test(
 #| fig-width: 7
 #| fig-height: 5
 
-ggplot(data_clean, aes(x = REGION., y = AGE, fill = REGION.)) +
+# Trouver le nom exact de la colonne région
+region_col <- grep("REGION", names(data_clean), value = TRUE, ignore.case = TRUE)[1]
+
+# Créer le graphique avec le nom correct
+ggplot(data_clean, aes(x = .data[[region_col]], y = AGE, fill = .data[[region_col]])) +
     geom_boxplot() +
     labs(
         title = "Distribution de l'Âge par Région",
